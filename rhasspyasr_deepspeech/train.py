@@ -17,13 +17,33 @@ def train(
     language_model: typing.Union[str, Path],
     trie_path: typing.Union[str, Path],
     alphabet_path: typing.Union[str, Path],
+    language_model_fst: typing.Optional[typing.Union[str, Path]] = None,
+    base_language_model_fst: typing.Optional[typing.Union[str, Path]] = None,
+    base_language_model_weight: typing.Optional[float] = None,
+    mixed_language_model_fst: typing.Optional[typing.Union[str, Path]] = None,
     balance_counts: bool = True,
 ):
     """Re-generates language model and trie from intent graph"""
+    # Language model mixing
+    base_fst_weight = None
+    if (
+        (base_language_model_fst is not None)
+        and (base_language_model_weight is not None)
+        and (base_language_model_weight > 0)
+    ):
+        base_fst_weight = (base_language_model_fst, base_language_model_weight)
+
+    # Begin training
     with tempfile.NamedTemporaryFile(mode="w+") as arpa_file:
         # 1. Create language model
         _LOGGER.debug("Converting to ARPA language model")
-        rhasspynlu.arpa_lm.graph_to_arpa(graph, arpa_file.name)
+        rhasspynlu.arpa_lm.graph_to_arpa(
+            graph,
+            arpa_file.name,
+            model_path=language_model_fst,
+            base_fst_weight=base_fst_weight,
+            merge_path=mixed_language_model_fst,
+        )
 
         arpa_file.seek(0)
 
@@ -51,7 +71,16 @@ def arpa_to_binary(
     arpa_path: typing.Union[str, Path], binary_lm_path: typing.Union[str, Path]
 ):
     """Convert ARPA language model to binary format using kenlm."""
-    binary_command = ["build_binary", "-T", "-s", str(arpa_path), str(binary_lm_path)]
+    # NOTE: Using -i because other LM tools mistakenly produce positive log
+    # probabilities. This option sets those to 0.
+    binary_command = [
+        "build_binary",
+        "-T",
+        "-s",
+        "-i",
+        str(arpa_path),
+        str(binary_lm_path),
+    ]
     _LOGGER.debug(binary_command)
     subprocess.check_call(binary_command)
 
