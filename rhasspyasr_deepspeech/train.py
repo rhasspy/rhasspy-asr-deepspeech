@@ -17,6 +17,7 @@ def train(
     language_model: typing.Union[str, Path],
     trie_path: typing.Union[str, Path],
     alphabet_path: typing.Union[str, Path],
+    vocab_path: typing.Optional[typing.Union[str, Path]] = None,
     language_model_fst: typing.Optional[typing.Union[str, Path]] = None,
     base_language_model_fst: typing.Optional[typing.Union[str, Path]] = None,
     base_language_model_weight: typing.Optional[float] = None,
@@ -43,6 +44,7 @@ def train(
             model_path=language_model_fst,
             base_fst_weight=base_fst_weight,
             merge_path=mixed_language_model_fst,
+            vocab_path=vocab_path,
         )
 
         arpa_file.seek(0)
