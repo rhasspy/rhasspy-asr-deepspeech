@@ -1,27 +1,20 @@
 SHELL := bash
-PACKAGE_NAME = $(shell basename "$$PWD")
-PYTHON_NAME = $(shell echo "$(PACKAGE_NAME)" | sed -e 's/-//' | sed -e 's/-/_/g')
-SOURCE = $(PYTHON_NAME)
-PYTHON_FILES = $(SOURCE)/*.py
-SHELL_FILES = bin/* debian/bin/* *.sh
-PIP_INSTALL ?= install
-DOWNLOAD_DIR = download
 
-.PHONY: reformat check dist venv downloads
+.PHONY: reformat check dist install
 
-all: venv
+all:
 
 # -----------------------------------------------------------------------------
 # Python
 # -----------------------------------------------------------------------------
 
 reformat:
-	scripts/format-code.sh $(PYTHON_FILES)
+	scripts/format-code.sh
 
 check:
-	scripts/check-code.sh $(PYTHON_FILES)
+	scripts/check-code.sh
 
-venv: downloads
+install:
 	scripts/create-venv.sh
 
 dist: sdist
@@ -31,16 +24,3 @@ sdist:
 
 test:
 	scripts/run-tests.sh
-
-# -----------------------------------------------------------------------------
-# Downloads
-# -----------------------------------------------------------------------------
-
-# Rhasspy development dependencies
-RHASSPY_DEPS := $(shell grep '^rhasspy-' requirements.txt | sort | comm -3 - rhasspy_wheels.txt | sed -e 's|^|$(DOWNLOAD_DIR)/|' -e 's/==/-/' -e 's/$$/.tar.gz/')
-
-$(DOWNLOAD_DIR)/%.tar.gz:
-	mkdir -p "$(DOWNLOAD_DIR)"
-	scripts/download-dep.sh "$@"
-
-downloads: $(RHASSPY_DEPS)
