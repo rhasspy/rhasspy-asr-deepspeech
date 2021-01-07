@@ -21,17 +21,15 @@ class DeepSpeechTranscriber(Transcriber):
     def __init__(
         self,
         model_path: typing.Optional[Path] = None,
-        language_model_path: typing.Optional[Path] = None,
-        trie_path: typing.Optional[Path] = None,
+        scorer_path: typing.Optional[Path] = None,
         model: typing.Optional[deepspeech.Model] = None,
-        beam_width: int = 500,
-        lm_alpha: float = 0.75,
-        lm_beta: float = 1.85,
+        beam_width: typing.Optional[int] = None,
+        lm_alpha: typing.Optional[float] = None,
+        lm_beta: typing.Optional[float] = None,
     ):
         self.model = model
         self.model_path = model_path
-        self.language_model_path = language_model_path
-        self.trie_path = trie_path
+        self.scorer_path = scorer_path
 
         self.beam_width = beam_width
         self.lm_alpha = lm_alpha
@@ -59,37 +57,36 @@ class DeepSpeechTranscriber(Transcriber):
 
             # Individual tokens
             tokens: typing.List[TranscriptionToken] = []
-            word = ""
-            word_start_time = 0
-            for index, item in enumerate(metadata.items):
-                text += item.character
+            confidence = 1
+            if metadata.transcripts:
+                transcript = next(iter(metadata.transcripts))
+                confidence = transcript.confidence
+                for token in transcript.tokens:
+                    text += token.text
+                    if tokens:
+                        # Previous token ends where current one starts
+                        tokens[-1].end_time = token.start_time
 
-                if item.character != " ":
-                    # Add to current word
-                    word += item.character
-
-                if item.character == " " or (index == (len(metadata.items) - 1)):
-                    # Combine into single tokens
                     tokens.append(
                         TranscriptionToken(
-                            token=word,
+                            token=token.text,
                             likelihood=1,
-                            start_time=word_start_time,
-                            end_time=item.start_time,
+                            start_time=token.start_time,
+                            end_time=token.start_time,
                         )
                     )
 
-                    # Word break
-                    word = ""
-                    word_start_time = 0
-                elif len(word) > 1:
-                    word_start_time = item.start_time
+            wav_seconds = get_wav_duration(wav_bytes)
+
+            if tokens:
+                # Set final token end time
+                tokens[-1].end_time = wav_seconds
 
             return Transcription(
                 text=text,
-                likelihood=metadata.confidence,
+                likelihood=confidence,
                 transcribe_seconds=(end_time - start_time),
-                wav_seconds=get_wav_duration(wav_bytes),
+                wav_seconds=wav_seconds,
                 tokens=tokens,
             )
 
@@ -133,31 +130,23 @@ class DeepSpeechTranscriber(Transcriber):
 
         assert self.model_path, "No model path"
 
-        _LOGGER.debug(
-            "Loading model from %s (beam width=%s)", self.model_path, self.beam_width
-        )
-        self.model = deepspeech.Model(str(self.model_path), self.beam_width)
+        _LOGGER.debug("Loading model from %s", self.model_path)
+        self.model = deepspeech.Model(str(self.model_path))
 
-        if (
-            self.language_model_path
-            and self.language_model_path.is_file()
-            and self.trie_path
-            and self.trie_path.is_file()
-        ):
+        if self.scorer_path and self.scorer_path.is_file():
+            _LOGGER.debug("Enabling scorer: %s)", self.scorer_path)
+
+            self.model.enableExternalScorer(str(self.scorer_path))
+
+        if self.beam_width is not None:
+            _LOGGER.debug("Setting beam width to %s", self.beam_width)
+            self.model.setBeamWidth(self.beam_width)
+
+        if (self.lm_alpha is not None) and (self.lm_beta is not None):
             _LOGGER.debug(
-                "Enabling language model (lm=%s, trie=%s, lm_alpha=%s, lm_beta=%s)",
-                self.language_model_path,
-                self.trie_path,
-                self.lm_alpha,
-                self.lm_beta,
+                "Setting lm_alpha=%s, lm_beta=%s", self.lm_alpha, self.lm_beta
             )
-
-            self.model.enableDecoderWithLM(
-                str(self.language_model_path),
-                str(self.trie_path),
-                self.lm_alpha,
-                self.lm_beta,
-            )
+            self.model.setScorerAlphaBeta(self.lm_alpha, self.lm_beta)
 
 
 # -----------------------------------------------------------------------------
