@@ -51,6 +51,55 @@ class DeepSpeechTranscriber(Transcriber):
         metadata = self.model.sttWithMetadata(audio_buffer)
         end_time = time.perf_counter()
 
+        wav_seconds = get_wav_duration(wav_bytes)
+        transcribe_seconds = end_time - start_time
+
+        return DeepSpeechTranscriber.metadata_to_transcription(
+            metadata, wav_seconds, transcribe_seconds
+        )
+
+    # -------------------------------------------------------------------------
+
+    def transcribe_stream(
+        self,
+        audio_stream: typing.Iterable[bytes],
+        sample_rate: int,
+        sample_width: int,
+        channels: int,
+    ) -> typing.Optional[Transcription]:
+        """Speech to text from an audio stream."""
+        self.maybe_load_model()
+        assert self.model, "Model was not loaded"
+
+        stream = self.model.createStream()
+
+        start_time = time.perf_counter()
+        num_frames = 0
+        for chunk in audio_stream:
+            if chunk:
+                stream.feedAudioContent(np.frombuffer(chunk, dtype=np.int16))
+                num_frames += len(chunk) // sample_width
+
+        metadata = stream.finishStreamWithMetadata()
+        end_time = time.perf_counter()
+
+        wav_seconds = num_frames / sample_rate
+        transcribe_seconds = end_time - start_time
+
+        return DeepSpeechTranscriber.metadata_to_transcription(
+            metadata, wav_seconds, transcribe_seconds
+        )
+
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def metadata_to_transcription(
+        metadata: typing.Optional[deepspeech.Metadata],
+        wav_seconds: float,
+        transcribe_seconds: float,
+    ) -> typing.Optional[Transcription]:
+        """Convert DeepSpeech metadata to Rhasspy Transcription"""
+
         if metadata:
             # Actual transcription
             text = ""
@@ -76,8 +125,6 @@ class DeepSpeechTranscriber(Transcriber):
                         )
                     )
 
-            wav_seconds = get_wav_duration(wav_bytes)
-
             if tokens:
                 # Set final token end time
                 tokens[-1].end_time = wav_seconds
@@ -85,37 +132,13 @@ class DeepSpeechTranscriber(Transcriber):
             return Transcription(
                 text=text,
                 likelihood=confidence,
-                transcribe_seconds=(end_time - start_time),
+                transcribe_seconds=transcribe_seconds,
                 wav_seconds=wav_seconds,
                 tokens=tokens,
             )
 
         # Failure
         return None
-
-    # -------------------------------------------------------------------------
-
-    def transcribe_stream(
-        self,
-        audio_stream: typing.Iterable[bytes],
-        sample_rate: int,
-        sample_width: int,
-        channels: int,
-    ) -> typing.Optional[Transcription]:
-        """Speech to text from an audio stream."""
-        # No online streaming support.
-        # Re-package as a WAV.
-        with io.BytesIO() as wav_buffer:
-            wav_file: wave.Wave_write = wave.open(wav_buffer, "wb")
-            with wav_file:
-                wav_file.setframerate(sample_rate)
-                wav_file.setsampwidth(sample_width)
-                wav_file.setnchannels(channels)
-
-                for frame in audio_stream:
-                    wav_file.writeframes(frame)
-
-            return self.transcribe_wav(wav_buffer.getvalue())
 
     def stop(self):
         """Stop the transcriber."""
