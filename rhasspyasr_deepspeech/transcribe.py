@@ -1,6 +1,7 @@
 """Automated speech recognition in Rhasspy using Mozilla's DeepSpeech."""
 import io
 import logging
+import math
 import time
 import typing
 import wave
@@ -109,7 +110,7 @@ class DeepSpeechTranscriber(Transcriber):
             confidence = 1
             if metadata.transcripts:
                 transcript = next(iter(metadata.transcripts))
-                confidence = transcript.confidence
+                confidence = math.exp(transcript.confidence)
                 words_and_tokens: typing.List[typing.Any] = [["", []]]
 
                 # Organize by whitespace-separated words
