@@ -110,24 +110,32 @@ class DeepSpeechTranscriber(Transcriber):
             if metadata.transcripts:
                 transcript = next(iter(metadata.transcripts))
                 confidence = transcript.confidence
+                words_and_tokens: typing.List[typing.Any] = [["", []]]
+
+                # Organize by whitespace-separated words
                 for token in transcript.tokens:
                     text += token.text
-                    if tokens:
-                        # Previous token ends where current one starts
-                        tokens[-1].end_time = token.start_time
+
+                    if token.text.strip():
+                        # Part of a word
+                        words_and_tokens[-1][0] += token.text
+                        words_and_tokens[-1][1].append(token)
+                    else:
+                        # Whitespace
+                        words_and_tokens.append(["", []])
+
+                for word, word_tokens in words_and_tokens:
+                    if not (word and word_tokens):
+                        continue
 
                     tokens.append(
                         TranscriptionToken(
-                            token=token.text,
+                            token=word,
                             likelihood=1,
-                            start_time=token.start_time,
-                            end_time=token.start_time,
+                            start_time=word_tokens[0].start_time,
+                            end_time=word_tokens[-1].start_time,
                         )
                     )
-
-            if tokens:
-                # Set final token end time
-                tokens[-1].end_time = wav_seconds
 
             return Transcription(
                 text=text,
