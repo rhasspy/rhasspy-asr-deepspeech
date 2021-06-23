@@ -107,7 +107,7 @@ class DeepSpeechTranscriber(Transcriber):
 
             # Individual tokens
             tokens: typing.List[TranscriptionToken] = []
-            confidence = 1
+            confidence = 1.0
             if metadata.transcripts:
                 transcript = next(iter(metadata.transcripts))
                 confidence = math.exp(transcript.confidence)
